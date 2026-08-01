@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PermissionsCalculator</title>
+  <style>
+    :root {
+      --bg: #0f1410;
+      --panel: #1a221c;
+      --line: #2e3d32;
+      --text: #e8efe9;
+      --muted: #9aafa0;
+      --accent: #6fbf7a;
+      --accent2: #c4a35a;
+      --danger: #d96b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1d3324 0%, var(--bg) 55%);
+      color: var(--text);
+      line-height: 1.45;
+      padding: 24px;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; }
+    h1 { margin: 0 0 6px; font-size: 1.6rem; }
+    .sub { color: var(--muted); margin-bottom: 22px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+      color: var(--accent);
+    }
+    .hint { color: var(--muted); font-size: 0.92rem; margin-bottom: 12px; }
+    label.perm {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    label.perm:hover { background: rgba(111, 191, 122, 0.08); }
+    label.perm input { margin-top: 3px; }
+    .bit {
+      display: inline-block;
+      min-width: 34px;
+      color: var(--accent2);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+    .name { font-weight: 600; }
+    .desc { display: block; color: var(--muted); font-size: 0.86rem; }
+    .result {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 10px;
+      background: #101611;
+      border: 1px dashed var(--line);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+    }
+    .result strong { color: var(--accent); }
+    .presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+    button {
+      background: #243028;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 12px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); color: #fff; }
+    button.primary { background: #2b4a34; border-color: var(--accent); }
+    .copy-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .note {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-left: 3px solid var(--accent2);
+      background: rgba(196, 163, 90, 0.08);
+      color: var(--muted);
+      border-radius: 0 10px 10px 0;
+    }
+    .note code { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>PermissionsCalculator</h1>
+    <p class="sub">Territory Maintenance — tick what each group can do, then copy the numbers into <code>TerritoryMaintenanceConfig.json</code>.</p>
+
+    <div class="grid">
+      <section class="card" id="publicCard">
+        <h2>PublicPermissions (outsiders)</h2>
+        <p class="hint">Players who are <strong>not</strong> owner/member, near a protected flag.<br>Whitelist items can always be placed anyway.</p>
+        <div class="presets">
+          <button type="button" data-target="public" data-value="0">Nothing (0)</button>
+          <button type="button" data-target="public" data-value="6">Deploy+Build (6)</button>
+          <button type="button" data-target="public" data-value="14">Like members build (14)</button>
+        </div>
+        <div id="publicList"></div>
+        <div class="result" id="publicResult"></div>
+      </section>
+
+      <section class="card" id="memberCard">
+        <h2>MemberPermissions (new members)</h2>
+        <p class="hint">Default rights given when someone joins the flag.<br>Owner always has full access. Kick/clear members stays owner-only.</p>
+        <div class="presets">
+          <button type="button" data-target="member" data-value="14">Build trio (14)</button>
+          <button type="button" class="primary" data-target="member" data-value="446">All except kick (446)</button>
+          <button type="button" data-target="member" data-value="511">Everything (511)</button>
+        </div>
+        <div id="memberList"></div>
+        <div class="result" id="memberResult"></div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:16px">
+      <h2>JSON snippet</h2>
+      <div class="result" id="jsonOut"></div>
+      <div class="copy-row">
+        <button type="button" class="primary" id="copyBtn">Copy JSON</button>
+        <button type="button" id="resetBtn">Reset to recommended</button>
+      </div>
+    </section>
+
+    <div class="note">
+      Recommended defaults: <code>"PublicPermissions": 0</code>, <code>"MemberPermissions": 446</code>.<br>
+      Formula: add the bit values together (e.g. DEPLOY 2 + BUILD 4 + DISMANTLE 8 = 14).<br>
+      Put the numbers in: <code>profile\TerritoryMaintenance\TerritoryMaintenanceConfig.json</code> then restart the server.
+    </div>
+  </div>
+
+  <script>
+    const PERMS = [
+      { bit: 1,   name: "ADMIN",          desc: "Full admin-style rights on the flag" },
+      { bit: 2,   name: "DEPLOY",         desc: "Place objects in the territory" },
+      { bit: 4,   name: "BUILD",          desc: "Build construction parts" },
+      { bit: 8,   name: "DISMANTLE",      desc: "Dismantle construction parts" },
+      { bit: 16,  name: "LOWERFLAG",      desc: "Lower flag (legacy / rarely used here)" },
+      { bit: 32,  name: "ADDMEMBER",      desc: "Open invite on the flag" },
+      { bit: 64,  name: "REMOVEMEMBER",   desc: "Remove / clear members (kick)" },
+      { bit: 128, name: "DEPLOYSPECIAL",  desc: "Special deploy rights" },
+      { bit: 256, name: "REMOVECARCOVER", desc: "Remove car covers" }
+    ];
+
+    function renderList(containerId, group) {
+      const root = document.getElementById(containerId);
+      root.innerHTML = "";
+      PERMS.forEach(p => {
+        const id = group + "_" + p.bit;
+        const label = document.createElement("label");
+        label.className = "perm";
+        label.innerHTML =
+          '<input type="checkbox" id="' + id + '" data-group="' + group + '" data-bit="' + p.bit + '" />' +
+          '<span><span class="bit">' + p.bit + '</span> <span class="name">' + p.name + '</span>' +
+          '<span class="desc">' + p.desc + '</span></span>';
+        root.appendChild(label);
+      });
+    }
+
+    function getValue(group) {
+      let sum = 0;
+      PERMS.forEach(p => {
+        const el = document.getElementById(group + "_" + p.bit);
+        if (el && el.checked) sum += p.bit;
+      });
+      return sum;
+    }
+
+    function setValue(group, value) {
+      const v = Number(value) || 0;
+      PERMS.forEach(p => {
+        const el = document.getElementById(group + "_" + p.bit);
+        if (el) el.checked = (v & p.bit) === p.bit;
+      });
+      update();
+    }
+
+    function selectedNames(group) {
+      const names = [];
+      PERMS.forEach(p => {
+        const el = document.getElementById(group + "_" + p.bit);
+        if (el && el.checked) names.push(p.name + "(" + p.bit + ")");
+      });
+      return names.length ? names.join(" + ") : "none";
+    }
+
+    function update() {
+      const pub = getValue("public");
+      const mem = getValue("member");
+      document.getElementById("publicResult").innerHTML =
+        'PublicPermissions = <strong>' + pub + '</strong>\n' + selectedNames("public");
+      document.getElementById("memberResult").innerHTML =
+        'MemberPermissions = <strong>' + mem + '</strong>\n' + selectedNames("member");
+      document.getElementById("jsonOut").textContent =
+        '"PublicPermissions": ' + pub + ',\n"MemberPermissions": ' + mem;
+    }
+
+    renderList("publicList", "public");
+    renderList("memberList", "member");
+
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener("change", update);
+    });
+
+    document.querySelectorAll("button[data-target]").forEach(btn => {
+      btn.addEventListener("click", () => setValue(btn.dataset.target, btn.dataset.value));
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      setValue("public", 0);
+      setValue("member", 446);
+    });
+
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      const text = document.getElementById("jsonOut").textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        document.getElementById("copyBtn").textContent = "Copied!";
+        setTimeout(() => { document.getElementById("copyBtn").textContent = "Copy JSON"; }, 1200);
+      } catch (e) {
+        prompt("Copy this:", text);
+      }
+    });
+
+    // Recommended defaults
+    setValue("public", 0);
+    setValue("member", 446);
+  </script>
+</body>
+</html>
